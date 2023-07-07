@@ -10,24 +10,24 @@ plausible functionality is removed from this version (pfr's workers proxy for Pl
 
 ### endpoints
 GET `/`
-: Redirects to `REDIREC_GEN200` or gives generic response `MESSAGE_GEN200` depending on configuration.
+: Redirects to `REDIREC_GEN200` or gives generic response `MESSAGE_GEN200` depending on configuration.  
 GET `/:key`
-: Redirects to the URL value of the key if found and valid.
+: Redirects to the URL value of the key if found and valid.  
 GET `/api/all`
-: Lists all keys in the store in JSON. The expense of this request scales with the size of the kv store, so use with caution.
+: Lists all keys in the store in JSON. The expense of this request scales with the size of the kv store, so use with caution.  
 POST `/api/new`
-: Create a new key with new value, which is SHA512 encoded and stored in the kv store.
+: Create a new key with new value, which is SHA512 encoded and stored in the kv store.  
 PATCH `/api/:key`
-: Overwrite a value of an existing key
+: Overwrite a value of an existing key  
 DELETE `/api/:key`
-: Deletes the key if it exists. Does not validate existence first.
+: Deletes the key if it exists. Does not validate existence first.  
 
 ### write format
 
 Postman is recommended for use with manual updates.
 
 Authorization
-: Use authorization and type Bearer Token, and input the same token as specified in wrangler.toml
+: Use authorization and type Bearer Token, and input the same token as specified in wrangler.toml  
 
 ### changes from rinku
 
@@ -42,14 +42,14 @@ Authorization
 ### bindings
 
 `id`
-: The ID of the Key Value store used in production mode
+: The ID of the Key Value store used in production mode  
 `preview_id`
-: The ID of the Key Value store used in dev mode
+: The ID of the Key Value store used in dev mode  
 
 ### variables
 
 `AUTH_TOKEN`
-: A password you can use as a bearer token for any admin function (put, patch, del, get all keys)
+: A password you can use as a bearer token for any admin function (put, patch, del, get all keys)  
 
 ### user messages
 
@@ -58,11 +58,11 @@ These messages are for public users interacting with the service. Error messages
 #### generic 200: default response (request without key)
 
 `REDIREC_GEN200`
-: URL to 302 redirect to if no key is given for redirect
+: URL to 302 redirect to if no key is given for redirect  
 `MESSAGE_GEN200`
-: Generic response message if no key is given for redirect. Fallback if `REDIREC_GEN200` empty or not defined.
+: Generic response message if no key is given for redirect. Fallback if `REDIREC_GEN200` empty or not defined.  
 `CONSOLE_GEN200`
-: Message logged by Worker
+: Message logged by Worker  
 
 #### success 301: user redirected
 
@@ -72,18 +72,18 @@ These messages are for public users interacting with the service. Error messages
 #### error 400: malformed request
 
 `MESSAGE_ERR400`
-: Response for malformed requests
+: Response for malformed requests  
 `CONSOLE_ERR404`
-: Message logged by Worker
+: Message logged by Worker  
 
 #### error 404: key doesn't exist in the database
 
 `REDIREC_ERR404`
-: If redirect is enabled, the URL the user is 301 redirected
+: If redirect is enabled, the URL the user is 301 redirected  
 `MESSAGE_ERR404`
-: Response to the user for requests where the key is not in the database. Fallback if `REDIREC_ERR404` empty or not defined.
+: Response to the user for requests where the key is not in the database. Fallback if `REDIREC_ERR404` empty or not defined.  
 `CONSOLE_ERR404`
-: Message logged by Worker
+: Message logged by Worker  
 
 ### notes on setting up
 
