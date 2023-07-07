@@ -6,7 +6,7 @@ simple link shortener, written in typescript + hono, for cloudflare workers and 
 
 plausible functionality is removed from this version (pfr's workers proxy for Plausible being released soon).
 
---
+---
 
 ### endpoints
 GET `/`
