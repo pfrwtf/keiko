@@ -1,4 +1,4 @@
-name = "rinku"
+name = "keiko"
 compatibility_date = "2023-01-01"
 
 kv_namespaces = [
@@ -6,4 +6,17 @@ kv_namespaces = [
 ]
 
 [vars]
-TOKEN="your_admin_token"
+AUTH_TOKEN="your_admin_token"
+
+REDIREC_GEN200="https://example.com/"
+MESSAGE_GEN200="200: You didn't tell us where you want to go, but hi!"
+MESSAGE_GEN200="200 Key not presented"
+
+CONSOLE_SUC301="301: Redirect Successful. $key → $value"
+
+MESSAGE_ERR400="400: Bad or Malformed Request, or the Bearer Token was Malformed."
+CONSOLE_ERR400="400 Bad Request or Malformed Token"
+
+REDIREC_ERR404="https://example.com/404/"
+MESSAGE_ERR404="404: Key provided wasn't found."
+CONSOLE_ERR404="404 Key not found"
