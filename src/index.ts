@@ -93,7 +93,6 @@ app.patch("/:key", async (c) => {
   return c.text("Modified " + c.req.param("key"));
 });
 
-/* Disabled Plausible proxy, as this exists in a separate worker on the main domain */
 /* app.get("/js/script.js", async (c) => {
   if(c.env.PLAUSIBLE_DOMAIN == undefined) return err(412, c)
   console.log(c.req.url.replace(new URL(c.req.url).host, c.env.PLAUSIBLE_DOMAIN))
