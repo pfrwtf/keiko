@@ -13,11 +13,10 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 async function err(code: number, c: Context): Promise<Response> {
-  let cat = await fetch("https://http.cat/" + code);
-  return c.newResponse(await cat.arrayBuffer(), code as StatusCode);
+  Response.redirect("https://pfr.wtf/", 301);
 }
 
-app.get("/", (c) => c.text("hello hono, this is rinku! ▲"));
+app.get("/", (c) => c.text('You gotta give me a short URL, holmes. -Keiko @ PFR'));
 
 app.use("/api/*", cors());
 app.use("/api/*", async (c, next) => {
@@ -31,7 +30,7 @@ app.delete("/*", async (c, next) => {
 });
 
 app.all("/favicon.ico", async (c) => {
-  let cat = await fetch("https://s3.natalie.sh/nano/favicon.ico");
+  let cat = await fetch("https://pfr.wtf/asset/favicon.ico");
   return c.newResponse(await cat.arrayBuffer());
 })
 
@@ -94,13 +93,13 @@ app.patch("/:key", async (c) => {
   return c.text("Modified " + c.req.param("key"));
 });
 
-app.get("/js/script.js", async (c) => {
-  // assuming plausible, if not needed return a *descriptive* error
+/* Disabled Plausible proxy, as this exists in a separate worker on the main domain */
+/* app.get("/js/script.js", async (c) => {
   if(c.env.PLAUSIBLE_DOMAIN == undefined) return err(412, c)
   console.log(c.req.url.replace(new URL(c.req.url).host, c.env.PLAUSIBLE_DOMAIN))
   let response = await fetch(c.req.url.replace(new URL(c.req.url).host, c.env.PLAUSIBLE_DOMAIN));
   return response
-});
+}); */
 
 app.post("/api/event", async (c) => {
   // assuming for plausible
