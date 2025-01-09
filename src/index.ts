@@ -37,6 +37,7 @@ app.all("/favicon.ico", async (c) => {
 })
 
 app.get("/all", async (c) => {
+  console.log("Get handler hit");
   let kv = await c.env.KV.list()
   return c.json(kv)
 })
@@ -82,6 +83,7 @@ app.post("/api/new", async (c) => {
 });
 
 app.delete("/:key", async (c) => {
+  console.log("Key deletion handler hit");
   await c.env.KV.delete(c.req.param("key"));
   return c.text("deleted " + c.req.param("key") + " if it existed.");
 });
