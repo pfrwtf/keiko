@@ -6,3 +6,4 @@ enabled = true
 
 [[kv_namespaces]]
 binding = "KV"
+id = "placeholder"
