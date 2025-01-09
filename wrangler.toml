@@ -1,0 +1,7 @@
+name = "keiko"
+compatibility_date = "2023-01-01"
+
+kv_namespaces = [
+    { binding = "KV", id = "726129f9817e4095804f0b3b79a8cf72"}
+]
+
