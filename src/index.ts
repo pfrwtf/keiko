@@ -45,43 +45,73 @@ app.get("/all", async (c) => {
 
 app.post("/api/new", async (c) => {
   console.log("Hitting /api/new route");
-  let body = await c.req.parseBody();
-  console.log("Request body:", body);
+  console.log("Headers:", Object.fromEntries(c.req.headers));
+  
+  let body;
+  try {
+    body = await c.req.parseBody();
+    console.log("Request body:", body);
+  } catch (e) {
+    console.error("Error parsing body:", e);
+    return c.json({ error: "Failed to parse request body" }, 400);
+  }
+
   // if body.url is undefined we skip all the parsing and return an error
   if (body.url !== undefined) {
+    console.log("URL found:", body.url);
+    
     // if not a valid url (could do more checking, but i have internal sites that don't have dot domains)
-    if (!body.url.toString().includes("://")) return await err(406, c);
+    if (!body.url.toString().includes("://")) {
+      console.log("Invalid URL format");
+      return await err(406, c);
+    }
+
     // generate a string
     if (body.key == undefined) {
+      console.log("No key provided, generating hash");
       // get hash of the url
       let hash_bytes = await crypto.subtle.digest(
         {
           name: "SHA-512",
         },
-        new TextEncoder().encode(body.url as string) // i do not see it
+        new TextEncoder().encode(body.url as string)
       );
+      
       // mangle the hash
       let hash = btoa(String.fromCharCode(...new Uint8Array(hash_bytes)))
         .replaceAll("/", "+!")
         .replaceAll("\\", "!+")
         .replaceAll("?", "4");
+      
       let curr = 0;
       // get first five characters of hash
-      body.key = hash.slice(curr, curr+5)
+      body.key = hash.slice(curr, curr+5);
+      console.log("Initial generated key:", body.key);
+      
       // rotate if it's already in the database
-      while ((await c.env.KV.get(body.key)) === undefined) {
-        body.key = hash.slice(curr, curr+5)
-        curr += 1
+      while ((await c.env.KV.get(body.key)) !== undefined) {  // Changed condition to !== undefined
+        curr += 1;
+        body.key = hash.slice(curr, curr+5);
+        console.log("Key exists, trying new key:", body.key);
       }
     }
-    if(await c.env.KV.get(body.key as string) == undefined){
-      c.env.KV.put(body.key as string, body.url as string)
-      return c.text(body.key as string)
+
+    console.log("Final key to use:", body.key);
+    const existingUrl = await c.env.KV.get(body.key as string);
+    console.log("Existing URL for key:", existingUrl);
+
+    if(existingUrl == undefined){
+      await c.env.KV.put(body.key as string, body.url as string);
+      console.log("Stored new URL with key:", body.key);
+      return c.text(body.key as string);
     } else {
       // this means that the custom key given *is* defined
-      return await err(409, c)
+      console.log("Custom key already exists");
+      return await err(409, c);
     }
   }
+
+  console.log("No URL provided in request");
   return c.notFound();
 });
 
