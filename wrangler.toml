@@ -6,4 +6,3 @@ enabled = true
 
 [[kv_namespaces]]
 binding = "KV"
-id = "$KV_ID"
