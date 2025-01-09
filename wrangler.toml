@@ -1,2 +1,9 @@
 name = "keiko"
 compatibility_date = "2023-01-01"
+
+[observability.logs]
+enabled = true
+
+[[kv_namespaces]]
+binding = "KV"
+id = "$KV_ID"
