@@ -20,11 +20,13 @@ app.get("/", (c) => c.text('You gotta give me a short URL, holmes. -Keiko @ PFR'
 
 app.use("/api/*", cors());
 app.use("/api/*", async (c, next) => {
+  console.log("Auth middleware hit with path:", c.req.path);
   const auth = bearerAuth({ token: c.env.TOKEN })
   return auth(c, next)
 });
 
 app.delete("/*", async (c, next) => {
+  console.log("POST handler hit");
   const auth = bearerAuth({ token: c.env.TOKEN })
   return auth(c, next)
 });
