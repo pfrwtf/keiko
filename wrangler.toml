@@ -1,9 +1,12 @@
 name = "keiko"
+main = "src/index.ts"
 compatibility_date = "2024-01-09"
+workers_dev = false
 
-[[kv_namespaces]]
-binding = "KV"
-id = "2d002e23fe354fafb9ed74caa4561626"
+kv_namespaces = [
+  { binding = "KV", id = "2d002e23fe354fafb9ed74caa4561626" }
+]
 
 [observability.logs]
 enabled = true
+head_sampling_rate = 1
