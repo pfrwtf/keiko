@@ -37,13 +37,16 @@ app.all("/favicon.ico", async (c) => {
 })
 
 app.get("/all", async (c) => {
-  console.log("Get handler hit");
+  console.log("Hitting /all route");
   let kv = await c.env.KV.list()
+  console.log("KV response:", kv);
   return c.json(kv)
 })
 
 app.post("/api/new", async (c) => {
+  console.log("Hitting /api/new route");
   let body = await c.req.parseBody();
+  console.log("Request body:", body);
   // if body.url is undefined we skip all the parsing and return an error
   if (body.url !== undefined) {
     // if not a valid url (could do more checking, but i have internal sites that don't have dot domains)
@@ -76,7 +79,7 @@ app.post("/api/new", async (c) => {
       return c.text(body.key as string)
     } else {
       // this means that the custom key given *is* defined
-      return err(409, c)
+      return await err(409, c)
     }
   }
   return c.notFound();
@@ -90,23 +93,16 @@ app.delete("/:key", async (c) => {
 
 app.patch("/:key", async (c) => {
   let body = await c.req.parseBody();
-  if(!body.url) return err(412, c)
+  if(!body.url) return await err(412, c)
   if(await c.env.KV.get(c.req.param("key")) === undefined) await err(417, c)
   await c.env.KV.delete(c.req.param("key"))
   await c.env.KV.put(c.req.param("key"), body.url as string)
   return c.text("Modified " + c.req.param("key"));
 });
 
-/* app.get("/js/script.js", async (c) => {
-  if(c.env.PLAUSIBLE_DOMAIN == undefined) return err(412, c)
-  console.log(c.req.url.replace(new URL(c.req.url).host, c.env.PLAUSIBLE_DOMAIN))
-  let response = await fetch(c.req.url.replace(new URL(c.req.url).host, c.env.PLAUSIBLE_DOMAIN));
-  return response
-}); */
-
 app.post("/api/event", async (c) => {
   // assuming for plausible
-  if(c.env.PLAUSIBLE_DOMAIN == undefined) return err(412, c)
+  if(c.env.PLAUSIBLE_DOMAIN == undefined) return await err(412, c)
   const request = c.req
   request.headers.delete('cookie');
   return await fetch("https://plausible.io/api/event", request);
