@@ -269,7 +269,7 @@ app.get('/:key', async (c) => {
 });
 
 // Handle HEAD requests same as GET
-app.head('/:key', async (c) => {
+app.on(['HEAD'], '/:key', async (c) => {
   const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
   const key = c.req.param('key');
   
