@@ -153,10 +153,26 @@ app.post('/api/new', async (c) => {
   logger.info('post', 'Processing POST request');
 
   try {
-    const body = await c.req.json();
-    logger.info('post', 'Received request body', { body });
+    // Log request details without headers transformation
+    logger.info('post', 'Request details', {
+      method: c.req.method,
+      url: c.req.url
+    });
 
-    if (!body.url) {
+    // Parse body with error handling
+    let body;
+    try {
+      const rawBody = await c.req.text();
+      logger.info('post', 'Raw body received', { rawBody });
+      body = JSON.parse(rawBody);
+      logger.info('post', 'Parsed body', { body });
+    } catch (parseError) {
+      logger.error('post', 'Failed to parse request body', parseError);
+      return c.json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
+    // Validate URL
+    if (!body?.url) {
       logger.info('post', 'Missing URL in request');
       return c.json({ error: 'URL is required' }, 400);
     }
@@ -171,28 +187,59 @@ app.post('/api/new', async (c) => {
         return c.json({ error: 'Key length must not exceed 32 characters' }, 400);
       }
       
-      const existing = await c.env.KV.get(key);
-      if (existing) {
-        logger.info('post', 'Key already exists', { key });
-        return c.json({ error: 'Key already exists' }, 409);
+      try {
+        const existing = await c.env.KV.get(key);
+        if (existing) {
+          logger.info('post', 'Key already exists', { key });
+          return c.json({ error: 'Key already exists' }, 409);
+        }
+      } catch (kvError) {
+        logger.error('post', 'KV get operation failed', kvError);
+        return c.json({ error: 'Failed to check key availability' }, 500);
       }
     } else {
       logger.info('post', 'Generating random key');
+      let attempts = 0;
+      const MAX_ATTEMPTS = 5;
+      
       do {
+        if (attempts >= MAX_ATTEMPTS) {
+          logger.error('post', 'Failed to generate unique key after max attempts');
+          return c.json({ error: 'Failed to generate unique key' }, 500);
+        }
+        
         key = generateKey();
-        logger.info('post', 'Checking key availability', { key });
-      } while (await c.env.KV.get(key));
+        logger.info('post', 'Checking key availability', { key, attempt: attempts + 1 });
+        
+        try {
+          const existing = await c.env.KV.get(key);
+          if (!existing) break;
+        } catch (kvError) {
+          logger.error('post', 'KV get operation failed during key generation', kvError);
+          return c.json({ error: 'Failed to check key availability' }, 500);
+        }
+        
+        attempts++;
+      } while (true);
     }
 
     const url = ensureHttps(body.url);
     logger.info('post', 'Storing URL', { key, url });
-    await c.env.KV.put(key, url);
     
-    logger.info('post', 'Successfully stored URL', { key, url });
-    return c.json({ key, url });
+    try {
+      await c.env.KV.put(key, url);
+      logger.info('post', 'Successfully stored URL', { key, url });
+      return c.json({ key, url });
+    } catch (kvError) {
+      logger.error('post', 'Failed to store URL in KV', kvError);
+      return c.json({ error: 'Failed to store URL' }, 500);
+    }
   } catch (e) {
-    logger.error('post', 'Error processing request', e);
-    return c.json({ error: 'Invalid request body' }, 400);
+    logger.error('post', 'Unexpected error in request handler', e);
+    return c.json({ 
+      error: 'Internal server error', 
+      details: e instanceof Error ? e.message : 'Unknown error'
+    }, 500);
   }
 });
 
