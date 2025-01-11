@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { Logger } from './utils/logger';
-import { renderLandingPage } from './pages/landing.ts';
 
 // Types for our environment bindings
 type Bindings = {
@@ -108,8 +107,8 @@ app.use('/api/*', async (c, next) => {
 // Root route - no key provided
 app.get('/', (c) => {
   const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
-  logger.info('root', 'Serving landing page');
-  return c.html(renderLandingPage());
+  logger.info('root', 'Serving root message');
+  return c.text('You gotta give me a short URL, holmes. -Keiko @ PFR');
 });
 
 // Create or update URL
