@@ -6,9 +6,9 @@ export class Logger {
     this.isEnabled = isEnabled;
   }
 
-  static initialize(env: { LOGGING?: string }): Logger {
+  static initialize(env: Record<string, any>): Logger {
     if (!Logger.instance) {
-      const isEnabled = env.LOGGING === 'true' || env.LOGGING === '1';
+      const isEnabled = env?.LOGGING === 'true' || env?.LOGGING === '1';
       Logger.instance = new Logger(isEnabled);
     }
     return Logger.instance;
@@ -17,27 +17,27 @@ export class Logger {
   info(context: string, message: string, data?: any) {
     if (!this.isEnabled) return;
     
-    const logData = {
+    console.log(JSON.stringify({
       timestamp: new Date().toISOString(),
+      level: 'info',
       context,
       message,
-      ...(data && { data })
-    };
-    
-    console.log(JSON.stringify(logData));
+      ...(data ? { data } : {})
+    }));
   }
 
   error(context: string, message: string, error?: any) {
     if (!this.isEnabled) return;
     
-    const logData = {
+    console.error(JSON.stringify({
       timestamp: new Date().toISOString(),
+      level: 'error',
       context,
       message,
-      error: error?.message || error,
-      stack: error?.stack
-    };
-    
-    console.error(JSON.stringify(logData));
+      ...(error ? {
+        error: error instanceof Error ? error.message : error,
+        ...(error instanceof Error && error.stack ? { stack: error.stack } : {})
+      } : {})
+    }));
   }
 }
