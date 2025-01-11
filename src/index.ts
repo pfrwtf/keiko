@@ -1,151 +1,290 @@
-import { Context, Hono } from "hono";
-import { cors } from "hono/cors";
-import { bearerAuth } from "hono/bearer-auth";
-import { StatusCode } from "hono/utils/http-status";
-import { plausible } from "./analytics";
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { bearerAuth } from 'hono/bearer-auth';
+import { Logger } from './utils/logger';
+import { renderLandingPage } from './pages/landing';
 
+// Types for our environment bindings
 type Bindings = {
   KV: KVNamespace;
   TOKEN: string;
-  PLAUSIBLE_DOMAIN: string | undefined;
+  PLAUSIBLE_DOMAIN?: string;
+  LOGGING?: string;
 };
 
+// Create Hono app
 const app = new Hono<{ Bindings: Bindings }>();
 
-async function err(code: number, c: Context): Promise<Response> {
-  Response.redirect("https://pfr.wtf/", 301);
+// Generate a random key
+function generateKey(): string {
+  const logger = Logger.initialize({ LOGGING: app.env?.LOGGING });
+  logger.info('generateKey', 'Generating random key');
+  
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const key = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(n => chars[n % chars.length])
+    .join('');
+  
+  logger.info('generateKey', 'Generated key', { key });
+  return key;
 }
 
-app.get("/", (c) => c.text('You gotta give me a short URL, holmes. -Keiko @ PFR'));
-
-app.use("/api/*", cors());
-app.use("/api/*", async (c, next) => {
-  console.log("Auth middleware hit with path:", c.req.path);
-  const auth = bearerAuth({ token: c.env.TOKEN })
-  return auth(c, next)
-});
-
-app.delete("/*", async (c, next) => {
-  console.log("POST handler hit");
-  const auth = bearerAuth({ token: c.env.TOKEN })
-  return auth(c, next)
-});
-
-app.all("/favicon.ico", async (c) => {
-  let cat = await fetch("https://pfr.wtf/asset/favicon.ico");
-  return c.newResponse(await cat.arrayBuffer());
-})
-
-app.get("/all", async (c) => {
-  console.log("Hitting /all route");
-  let kv = await c.env.KV.list()
-  console.log("KV response:", kv);
-  return c.json(kv)
-})
-
-app.post("/api/new", async (c) => {
-  console.log("Hitting /api/new route");
-  console.log("Headers:", Object.fromEntries(c.req.headers));
+// Ensure HTTPS for destination URLs
+function ensureHttps(url: string): string {
+  const logger = Logger.initialize({ LOGGING: app.env?.LOGGING });
+  logger.info('ensureHttps', 'Processing URL', { original: url });
   
-  let body;
+  let processedUrl = url;
+  if (url.startsWith('http://')) {
+    processedUrl = url.replace('http://', 'https://');
+    logger.info('ensureHttps', 'Upgraded HTTP to HTTPS', { original: url, processed: processedUrl });
+  } else if (!url.startsWith('https://')) {
+    processedUrl = `https://${url}`;
+    logger.info('ensureHttps', 'Added HTTPS prefix', { original: url, processed: processedUrl });
+  }
+  
+  return processedUrl;
+}
+
+// Plausible analytics reporting
+async function reportToPlausible(c: any) {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  
+  if (!c.env.PLAUSIBLE_DOMAIN) {
+    logger.info('reportToPlausible', 'Plausible reporting skipped - no domain configured');
+    return;
+  }
+
   try {
-    body = await c.req.parseBody();
-    console.log("Request body:", body);
-  } catch (e) {
-    console.error("Error parsing body:", e);
-    return c.json({ error: "Failed to parse request body" }, 400);
-  }
+    logger.info('reportToPlausible', 'Sending event to Plausible', {
+      domain: new URL(c.req.url).host,
+      url: c.req.url
+    });
 
-  // if body.url is undefined we skip all the parsing and return an error
-  if (body.url !== undefined) {
-    console.log("URL found:", body.url);
+    await fetch(`https://${c.env.PLAUSIBLE_DOMAIN}/api/event`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': c.req.headers.get('user-agent') || '',
+        'X-Forwarded-For': c.req.headers.get('x-real-ip') || '',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        domain: new URL(c.req.url).host,
+        name: 'pageview',
+        url: c.req.url,
+        referrer: c.req.headers.get('referer') || 'none'
+      })
+    });
     
-    // if not a valid url (could do more checking, but i have internal sites that don't have dot domains)
-    if (!body.url.toString().includes("://")) {
-      console.log("Invalid URL format");
-      return await err(406, c);
-    }
+    logger.info('reportToPlausible', 'Successfully reported to Plausible');
+  } catch (e) {
+    logger.error('reportToPlausible', 'Failed to report to Plausible', e);
+  }
+}
 
-    // generate a string
-    if (body.key == undefined) {
-      console.log("No key provided, generating hash");
-      // get hash of the url
-      let hash_bytes = await crypto.subtle.digest(
-        {
-          name: "SHA-512",
-        },
-        new TextEncoder().encode(body.url as string)
-      );
-      
-      // mangle the hash
-      let hash = btoa(String.fromCharCode(...new Uint8Array(hash_bytes)))
-        .replaceAll("/", "+!")
-        .replaceAll("\\", "!+")
-        .replaceAll("?", "4");
-      
-      let curr = 0;
-      // get first five characters of hash
-      body.key = hash.slice(curr, curr+5);
-      console.log("Initial generated key:", body.key);
-      
-      // rotate if it's already in the database
-      while ((await c.env.KV.get(body.key)) !== undefined) {  // Changed condition to !== undefined
-        curr += 1;
-        body.key = hash.slice(curr, curr+5);
-        console.log("Key exists, trying new key:", body.key);
-      }
-    }
+// Initialize logging for middleware
+app.use('*', async (c, next) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  logger.info('request', 'Incoming request', {
+    method: c.req.method,
+    path: c.req.path,
+    headers: Object.fromEntries(c.req.headers)
+  });
+  await next();
+});
 
-    console.log("Final key to use:", body.key);
-    const existingUrl = await c.env.KV.get(body.key as string);
-    console.log("Existing URL for key:", existingUrl);
+// CORS for API endpoints
+app.use('/api/*', cors());
 
-    if(existingUrl == undefined){
-      await c.env.KV.put(body.key as string, body.url as string);
-      console.log("Stored new URL with key:", body.key);
-      return c.text(body.key as string);
-    } else {
-      // this means that the custom key given *is* defined
-      console.log("Custom key already exists");
-      return await err(409, c);
-    }
+// Auth middleware for API endpoints
+app.use('/api/*', async (c, next) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  logger.info('auth', 'Validating authentication');
+  
+  const auth = bearerAuth({ token: c.env.TOKEN });
+  return auth(c, next);
+});
+
+// Root route - no key provided
+app.get('/', (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  logger.info('root', 'Serving landing page');
+  return c.html(renderLandingPage());
+});
+
+// Create or update URL
+app.put('/api/:key', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  const key = c.req.param('key');
+  
+  logger.info('put', 'Processing PUT request', { key });
+  
+  // Validate key length
+  if (key.length > 32) {
+    logger.info('put', 'Key length validation failed', { length: key.length });
+    return c.json({ error: 'Key length must not exceed 32 characters' }, 400);
   }
 
-  console.log("No URL provided in request");
-  return c.notFound();
+  try {
+    // Parse and validate body
+    const body = await c.req.json();
+    logger.info('put', 'Received request body', { body });
+    
+    if (!body.url) {
+      logger.info('put', 'Missing URL in request');
+      return c.json({ error: 'URL is required' }, 400);
+    }
+
+    // Ensure HTTPS and store URL
+    const url = ensureHttps(body.url);
+    logger.info('put', 'Storing URL', { key, url });
+    await c.env.KV.put(key, url);
+    
+    logger.info('put', 'Successfully stored URL', { key, url });
+    return c.json({ key, url });
+  } catch (e) {
+    logger.error('put', 'Error processing request', e);
+    return c.json({ error: 'Invalid request body' }, 400);
+  }
 });
 
-app.delete("/:key", async (c) => {
-  console.log("Key deletion handler hit");
-  await c.env.KV.delete(c.req.param("key"));
-  return c.text("deleted " + c.req.param("key") + " if it existed.");
+// Create URL with auto-generated key
+app.post('/api/new', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  logger.info('post', 'Processing POST request');
+
+  try {
+    const body = await c.req.json();
+    logger.info('post', 'Received request body', { body });
+
+    if (!body.url) {
+      logger.info('post', 'Missing URL in request');
+      return c.json({ error: 'URL is required' }, 400);
+    }
+
+    let key = body.key;
+    
+    if (key) {
+      logger.info('post', 'Custom key provided', { key });
+      
+      if (key.length > 32) {
+        logger.info('post', 'Key length validation failed', { length: key.length });
+        return c.json({ error: 'Key length must not exceed 32 characters' }, 400);
+      }
+      
+      const existing = await c.env.KV.get(key);
+      if (existing) {
+        logger.info('post', 'Key already exists', { key });
+        return c.json({ error: 'Key already exists' }, 409);
+      }
+    } else {
+      logger.info('post', 'Generating random key');
+      do {
+        key = generateKey();
+        logger.info('post', 'Checking key availability', { key });
+      } while (await c.env.KV.get(key));
+    }
+
+    const url = ensureHttps(body.url);
+    logger.info('post', 'Storing URL', { key, url });
+    await c.env.KV.put(key, url);
+    
+    logger.info('post', 'Successfully stored URL', { key, url });
+    return c.json({ key, url });
+  } catch (e) {
+    logger.error('post', 'Error processing request', e);
+    return c.json({ error: 'Invalid request body' }, 400);
+  }
 });
 
-app.patch("/:key", async (c) => {
-  let body = await c.req.parseBody();
-  if(!body.url) return await err(412, c)
-  if(await c.env.KV.get(c.req.param("key")) === undefined) await err(417, c)
-  await c.env.KV.delete(c.req.param("key"))
-  await c.env.KV.put(c.req.param("key"), body.url as string)
-  return c.text("Modified " + c.req.param("key"));
+// Update existing URL
+app.patch('/api/:key', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  const key = c.req.param('key');
+  
+  logger.info('patch', 'Processing PATCH request', { key });
+  
+  try {
+    // Check if key exists
+    const existing = await c.env.KV.get(key);
+    if (!existing) {
+      logger.info('patch', 'Key not found', { key });
+      return c.json({ error: 'Key not found' }, 404);
+    }
+
+    const body = await c.req.json();
+    logger.info('patch', 'Received request body', { body });
+
+    if (!body.url) {
+      logger.info('patch', 'Missing URL in request');
+      return c.json({ error: 'URL is required' }, 400);
+    }
+
+    const url = ensureHttps(body.url);
+    logger.info('patch', 'Updating URL', { key, url });
+    await c.env.KV.put(key, url);
+    
+    logger.info('patch', 'Successfully updated URL', { key, url });
+    return c.json({ key, url });
+  } catch (e) {
+    logger.error('patch', 'Error processing request', e);
+    return c.json({ error: 'Invalid request body' }, 400);
+  }
 });
 
-app.post("/api/event", async (c) => {
-  // assuming for plausible
-  if(c.env.PLAUSIBLE_DOMAIN == undefined) return await err(412, c)
-  const request = c.req
-  request.headers.delete('cookie');
-  return await fetch("https://plausible.io/api/event", request);
-})
-
-app.get("/:key", async (c) => {
-  let r = await c.env.KV.get(c.req.param("key"));
-  console.log(new URL(c.req.url).host)
-
-  if (c.env.PLAUSIBLE_DOMAIN != undefined) c.executionCtx.waitUntil(plausible(c));
-
-  if (r == null) return await err(404, c);
-
-  return c.redirect(r);
+// Delete URL
+app.delete('/api/:key', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  const key = c.req.param('key');
+  
+  logger.info('delete', 'Processing DELETE request', { key });
+  
+  await c.env.KV.delete(key);
+  logger.info('delete', 'Successfully deleted key', { key });
+  
+  return c.json({ message: 'Deleted' });
 });
+
+// Redirect for short URLs
+app.get('/:key', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  const key = c.req.param('key');
+  
+  logger.info('get', 'Processing GET request', { key });
+  
+  const url = await c.env.KV.get(key);
+  
+  if (!url) {
+    logger.info('get', 'URL not found', { key });
+    return c.text('Short URL not found', 404);
+  }
+
+  // Report to Plausible if configured
+  if (c.env.PLAUSIBLE_DOMAIN) {
+    logger.info('get', 'Initiating Plausible reporting');
+    c.executionCtx.waitUntil(reportToPlausible(c));
+  }
+
+  logger.info('get', 'Redirecting to URL', { key, url });
+  return c.redirect(url);
+});
+
+// Handle HEAD requests same as GET
+app.head('/:key', async (c) => {
+  const logger = Logger.initialize({ LOGGING: c.env?.LOGGING });
+  const key = c.req.param('key');
+  
+  logger.info('head', 'Processing HEAD request', { key });
+  
+  const url = await c.env.KV.get(key);
+  
+  if (!url) {
+    logger.info('head', 'URL not found', { key });
+    return c.text('Short URL not found', 404);
+  }
+
+  logger.info('head', 'Redirecting to URL', { key, url });
+  return c.redirect(url);
+});
+
 export default app;
