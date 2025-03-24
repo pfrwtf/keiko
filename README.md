@@ -38,8 +38,11 @@ The worker serves as a redirector for the `pfr.fyi` domain, with these key featu
 
 The worker expects these API endpoints on your main site:
 
-- `/api/keiko/internal/{slug}` - For internal redirects
-- `/api/keiko/external/{slug}` - For external redirects
+- `/api/keiko/internal/{slug}/` - For internal redirects
+- `/api/keiko/external/{slug}/` - For external redirects
+- `/api/keiko/all/` - List of all available URLs (optional)
+
+Note: All URLs use trailing slashes to avoid unnecessary redirects in Astro.
 
 Each endpoint should return a JSON response with either:
 ```json

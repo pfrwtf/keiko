@@ -38,6 +38,11 @@ function getApiBase(c: Context): string {
   return isDev(c) ? `https://${c.env.DOMAIN_DEV}` : `https://${c.env.DOMAIN_PROD}`;
 }
 
+// Helper function to get the appropriate API endpoint
+function getApiEndpoint(c: Context, type: 'internal' | 'external', slug: string): string {
+  return `${getApiBase(c)}/api/keiko/${type}/${slug}/`;
+}
+
 // Helper function to get the appropriate Plausible domain
 function getPlausibleDomain(c: Context): string {
   return isDev(c) ? c.env.PLAUSIBLE_DOMAIN_DEV : c.env.PLAUSIBLE_DOMAIN_PROD;
@@ -71,7 +76,7 @@ app.get("/e/:slug", async (c) => {
   };
   
   try {
-    const apiUrl = `${getApiBase(c)}/api/keiko/external/${slug}`;
+    const apiUrl = getApiEndpoint(c, 'external', slug);
     console.log(`Fetching from API: ${apiUrl}`);
     
     const response = await fetch(apiUrl);
@@ -139,7 +144,7 @@ app.get("/:slug", async (c) => {
   };
   
   try {
-    const apiUrl = `${getApiBase(c)}/api/keiko/internal/${slug}`;
+    const apiUrl = getApiEndpoint(c, 'internal', slug);
     console.log(`Fetching from API: ${apiUrl}`);
     
     const response = await fetch(apiUrl);
@@ -185,7 +190,7 @@ app.get("/:slug", async (c) => {
     // Get the full URL for internal redirects
     const destinationUrl = data.destination.startsWith('http') 
       ? data.destination 
-      : `${getApiBase(c)}${data.destination.startsWith('/') ? '' : '/'}${data.destination}`;
+      : `${getApiBase(c)}${data.destination.startsWith('/') ? '' : '/'}${data.destination}${data.destination.endsWith('/') ? '' : '/'}`;
     
     // 301 redirect for internal URLs
     return c.redirect(destinationUrl, 301);
