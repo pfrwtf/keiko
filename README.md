@@ -57,18 +57,48 @@ Or for errors:
 }
 ```
 
+## Installation & Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/keiko-redirector.git
+   cd keiko-redirector
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure environment variables in `wrangler.toml` or Cloudflare dashboard:
+   - `DOMAIN_PROD` - Your production domain
+   - `DOMAIN_DEV` - Your development domain
+   - `PLAUSIBLE_DOMAIN_PROD` - Production Plausible domain
+   - `PLAUSIBLE_DOMAIN_DEV` - Development Plausible domain
+   - `FALLBACK_REDIRECT` - Fallback URL for 404s/errors
+
 ## Deployment
 
+To deploy to production:
 ```bash
-# Deploy to production
 npm run deploy
+```
 
-# Deploy to development
+To deploy to development environment:
+```bash
 npm run deploy:dev
 ```
 
 ## Local Development
 
+Start a local development server:
 ```bash
 npm run dev
+```
+
+## Building
+
+If you need to build without deploying:
+```bash
+npm run build
 ```

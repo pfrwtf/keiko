@@ -1,12 +1,16 @@
 {
   "name": "keiko",
   "version": "2.0.0",
-  "description": "URL shortener service for Pork Fried Rice Collective",
+  "description": "URL shortener service for pfr.fyi",
   "main": "dist/index.js",
   "scripts": {
     "dev": "wrangler dev src/index.ts",
+    "build": "tsc",
+    "format": "prettier --write '**/*.{ts,js,json}'",
+    "lint": "eslint --ext .ts,.js .",
     "deploy": "wrangler deploy --env production",
-    "deploy:dev": "wrangler deploy --env development"
+    "deploy:dev": "wrangler deploy --env development",
+    "postinstall": "wrangler types"
   },
   "dependencies": {
     "hono": "^3.11.7"
