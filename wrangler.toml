@@ -11,21 +11,15 @@ PLAUSIBLE_DOMAIN_PROD = "pfr.fyi"
 PLAUSIBLE_DOMAIN_DEV = "dev.pfr.fyi"
 FALLBACK_REDIRECT = "https://pfr.wtf/"
 
-# Production environment
-[env.production]
 routes = [
-  { pattern = "pfr.fyi", custom_domain = true }
-]
-
-# Development environment
-[env.development]
-routes = [
-  { pattern = "dev.pfr.fyi", custom_domain = true }
+  { pattern = "pfr.fyi", custom_domain = true },
+  { pattern = "dev.pfr.fyi", custom_domain = true },
+  { pattern = "www.pfr.fyi", custom_domain = true },
 ]
 
 [observability.logs]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.5
 
 [limits]
-cpu_ms = 100
+cpu_ms = 150
