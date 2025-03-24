@@ -8,6 +8,9 @@ type Env = {
   PLAUSIBLE_DOMAIN_PROD: string;
   PLAUSIBLE_DOMAIN_DEV: string;
   FALLBACK_REDIRECT: string;
+  // Cloudflare Access credentials
+  DEV_CLIENT_ID: string;
+  DEV_CLIENT_SECRET: string;
 };
 
 type Variables = {
@@ -62,11 +65,36 @@ function getTTL(c: Context): number {
     : 2592000; // 30 days for prod
 }
 
-// Helper function to handle API response errors
-async function tryFetchWithFallback(apiUrl: string, fallbackUrl?: string): Promise<[Response | null, Error | null]> {
+// Updated Helper function to handle API response errors with Cloudflare Access authentication
+async function tryFetchWithFallback(
+  c: Context,
+  apiUrl: string, 
+  fallbackUrl?: string
+): Promise<[Response | null, Error | null]> {
   try {
     console.log(`Trying URL: ${apiUrl}`);
-    const response = await fetch(apiUrl);
+    
+    // Prepare headers with Cloudflare Access service tokens
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Add Cloudflare Access authentication headers only when connecting to dev.pfr.wtf
+    const url = new URL(apiUrl);
+    if (url.hostname === 'dev.pfr.wtf') {
+      const clientId = c.env.DEV_CLIENT_ID;
+      const clientSecret = c.env.DEV_CLIENT_SECRET;
+      
+      if (clientId && clientSecret) {
+        console.log('Adding Cloudflare Access credentials for dev.pfr.wtf');
+        headers['CF-Access-Client-Id'] = clientId;
+        headers['CF-Access-Client-Secret'] = clientSecret;
+      } else {
+        console.warn('Cloudflare Access credentials not found in environment variables');
+      }
+    }
+    
+    const response = await fetch(apiUrl, { headers });
     
     // Check if we got a valid response
     if (response.ok) {
@@ -77,13 +105,13 @@ async function tryFetchWithFallback(apiUrl: string, fallbackUrl?: string): Promi
         return [response, null];
       }
       
-      // If we got HTML or other content, it's probably a 404 page
+      // If we got HTML or other content, it's probably a 404 page or Cloudflare Access login page
       console.error(`Expected JSON but got ${contentType || 'unknown content type'}`);
       
       // Try fallback URL if provided
       if (fallbackUrl) {
         console.log(`Trying fallback URL: ${fallbackUrl}`);
-        return await tryFetchWithFallback(fallbackUrl);
+        return await tryFetchWithFallback(c, fallbackUrl);
       }
       
       return [null, new Error(`Expected JSON response but got ${contentType || 'unknown content type'}`)];
@@ -92,7 +120,7 @@ async function tryFetchWithFallback(apiUrl: string, fallbackUrl?: string): Promi
     // Try fallback URL if provided
     if (fallbackUrl) {
       console.log(`Response not OK (${response.status}), trying fallback URL: ${fallbackUrl}`);
-      return await tryFetchWithFallback(fallbackUrl);
+      return await tryFetchWithFallback(c, fallbackUrl);
     }
     
     return [null, new Error(`API returned status ${response.status}`)];
@@ -100,7 +128,7 @@ async function tryFetchWithFallback(apiUrl: string, fallbackUrl?: string): Promi
     // Try fallback URL if provided
     if (fallbackUrl) {
       console.log(`Fetch error, trying fallback URL: ${fallbackUrl}`);
-      return await tryFetchWithFallback(fallbackUrl);
+      return await tryFetchWithFallback(c, fallbackUrl);
     }
     
     return [null, error instanceof Error ? error : new Error(String(error))];
@@ -134,8 +162,8 @@ app.get("/e/:slug", async (c) => {
     
     console.log(`Fetching from API: ${apiUrlWithSlash}`);
     
-    // Try both URL formats
-    const [response, error] = await tryFetchWithFallback(apiUrlWithSlash, apiUrlWithoutSlash);
+    // Try both URL formats with the updated function that includes CF Access credentials
+    const [response, error] = await tryFetchWithFallback(c, apiUrlWithSlash, apiUrlWithoutSlash);
     
     if (error || !response) {
       console.error(`API error:`, error);
@@ -210,8 +238,8 @@ app.get("/:slug", async (c) => {
     
     console.log(`Fetching from API: ${apiUrlWithSlash}`);
     
-    // Try both URL formats
-    const [response, error] = await tryFetchWithFallback(apiUrlWithSlash, apiUrlWithoutSlash);
+    // Try both URL formats with the updated function that includes CF Access credentials
+    const [response, error] = await tryFetchWithFallback(c, apiUrlWithSlash, apiUrlWithoutSlash);
     
     if (error || !response) {
       console.error(`API error:`, error);
