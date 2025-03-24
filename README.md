@@ -65,9 +65,9 @@ Or for errors:
    cd keiko-redirector
    ```
 
-2. Install dependencies:
+2. Install dependencies with Yarn:
    ```bash
-   npm install
+   yarn install
    ```
 
 3. Configure environment variables in `wrangler.toml` or Cloudflare dashboard:
@@ -81,24 +81,24 @@ Or for errors:
 
 To deploy to production:
 ```bash
-npm run deploy
+yarn deploy
 ```
 
 To deploy to development environment:
 ```bash
-npm run deploy:dev
+yarn deploy:dev
 ```
 
 ## Local Development
 
 Start a local development server:
 ```bash
-npm run dev
+yarn dev
 ```
 
 ## Building
 
 If you need to build without deploying:
 ```bash
-npm run build
+yarn build
 ```

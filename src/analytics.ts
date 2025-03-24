@@ -1,12 +1,29 @@
 // analytics.ts
-import { Context } from "hono";
+import type { Context } from "hono";
+
+type Env = {
+  DOMAIN_PROD: string;
+  DOMAIN_DEV: string;
+  PLAUSIBLE_DOMAIN_PROD: string;
+  PLAUSIBLE_DOMAIN_DEV: string;
+  FALLBACK_REDIRECT: string;
+};
+
+type Variables = {};
 
 type AnalyticsEvent = {
   name: string;
   props?: Record<string, string>;
 };
 
-export async function sendAnalytics(c: Context, event: AnalyticsEvent): Promise<void> {
+export async function sendAnalytics<
+  E extends Env = Env,
+  P extends string = string,
+  V extends Variables = Variables
+>(
+  c: Context<{ Bindings: E; Variables: V }, P>,
+  event: AnalyticsEvent
+): Promise<void> {
   try {
     // Determine if we're in dev or prod
     const isDev = c.req.url.includes(c.env.DOMAIN_DEV);
