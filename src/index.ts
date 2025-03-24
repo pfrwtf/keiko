@@ -39,10 +39,11 @@ function getApiBase(c: Context): string {
   return `https://${base.replace(/\/$/, '')}`;
 }
 
-// Helper function to get the appropriate API endpoint with proper trailing slash
+// Helper function to get the appropriate API endpoint without trailing slash
 function getApiEndpoint(c: Context, type: 'internal' | 'external', slug: string): string {
-  // Try both with and without trailing slash
-  return `${getApiBase(c)}/api/keiko/${type}/${slug}/`;
+  // Remove any trailing slash from the slug
+  const cleanSlug = slug.replace(/\/$/, '');
+  return `${getApiBase(c)}/api/keiko/${type}/${cleanSlug}`;
 }
 
 // Helper function to get the appropriate Plausible domain
