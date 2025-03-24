@@ -29,21 +29,25 @@ app.use("*", logger());
 
 // Helper function to determine if we're in dev or prod
 function isDev(c: Context): boolean {
-  return c.req.url.includes(c.env.DOMAIN_DEV);
+  // Get the request hostname
+  const hostname = new URL(c.req.url).hostname;
+  
+  // Check if the hostname starts with 'dev.'
+  return hostname.startsWith('dev.');
 }
 
 // Helper function to get the appropriate API base
 function getApiBase(c: Context): string {
-  const base = isDev(c) ? c.env.DOMAIN_DEV : c.env.DOMAIN_PROD;
+  const domain = isDev(c) ? c.env.DOMAIN_DEV : c.env.DOMAIN_PROD;
+  console.log(`Environment: ${isDev(c) ? 'dev' : 'prod'}, Using domain: ${domain}`);
   // Ensure the base doesn't have a trailing slash
-  return `https://${base.replace(/\/$/, '')}`;
+  return `https://${domain.replace(/\/$/, '')}`;
 }
 
-// Helper function to get the appropriate API endpoint without trailing slash
+// Helper function to get the appropriate API endpoint with proper trailing slash
 function getApiEndpoint(c: Context, type: 'internal' | 'external', slug: string): string {
-  // Remove any trailing slash from the slug
-  const cleanSlug = slug.replace(/\/$/, '');
-  return `${getApiBase(c)}/api/keiko/${type}/${cleanSlug}`;
+  // Try both with and without trailing slash
+  return `${getApiBase(c)}/api/keiko/${type}/${slug}/`;
 }
 
 // Helper function to get the appropriate Plausible domain
@@ -61,6 +65,7 @@ function getTTL(c: Context): number {
 // Helper function to handle API response errors
 async function tryFetchWithFallback(apiUrl: string, fallbackUrl?: string): Promise<[Response | null, Error | null]> {
   try {
+    console.log(`Trying URL: ${apiUrl}`);
     const response = await fetch(apiUrl);
     
     // Check if we got a valid response
