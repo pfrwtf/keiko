@@ -1,12 +1,19 @@
 {
   "name": "keiko",
-  "packageManager": "yarn@4.5.0",
+  "version": "2.0.0",
+  "description": "URL shortener service for Pork Fried Rice Collective",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts",
+    "deploy": "wrangler deploy --env production",
+    "deploy:dev": "wrangler deploy --env development"
+  },
   "dependencies": {
-    "hono": "^4.6.16"
+    "hono": "^3.11.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
-    "typescript": "^5.7.3",
-    "wrangler": "^3.101.0"
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.22.3"
   }
 }

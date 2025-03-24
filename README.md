@@ -1,43 +1,74 @@
-# Keiko
-simple link shortener, for Cloudflare Workers and pushes the data to Plausible Analytics.
+# Keiko URL Redirector
 
-based on rinku by @espeon
+A Cloudflare Worker for the `pfr.fyi` URL shortener service.
 
----
-### changes made
-- changed name
-- disabled proxy (commented out, easy to change back)
-- changed favicon to pfr's
-- changed greeting message
-- removed cats (broken)
+## Features
 
-### todo
-- change 404 to redirect to pfr site
-- change / to redirect to pfr site
-- figure out better auth method
-- build a ui to manage keys
-- maybe put back cats
-- thank @espeon again for letting me use this and tolerating incessant questions on discord (thx and sry!)
----
+- Redirects short URLs to their destinations
+- Handles both internal and external redirects
+- Caches responses for performance
+- Sends analytics to Plausible
+- Supports both production and development environments
 
-set ENV variables:
-- TOKEN (bearer token)
-- PLAUSIBLE_DOMAIN (the domain your plausible instance is hosted on. if you use plausible cloud, put in plausible.io)
-- bind to a kv with the variable name of KV.
+## Architecture
 
-_notes:_ the plausible api will automatically determine the domain being monitored based on the domain you are connecting to keiko on. 
+The worker serves as a redirector for the `pfr.fyi` domain, with these key features:
 
-make sure your custom domain is mapped to a domain in your plausible account if you're setting aside a whole ass domain for this.
+1. **API-Based Redirects**: Rather than storing URLs in KV, it queries an API endpoint on your main site.
+2. **Dual Environments**: Supports both production (`pfr.fyi`) and development (`dev.pfr.fyi`) domains.
+3. **Analytics**: Tracks redirects, 404s, and errors with Plausible.
+4. **Caching**: Caches API responses to improve performance and reduce load.
 
----
+## Environment Variables
 
-develop
+| Variable | Description |
+|----------|-------------|
+| `DOMAIN_PROD` | Production domain (e.g., `yourmainsite.com`) |
+| `DOMAIN_DEV` | Development domain (e.g., `dev.yourmainsite.com`) |
+| `PLAUSIBLE_DOMAIN_PROD` | Plausible domain for production |
+| `PLAUSIBLE_DOMAIN_DEV` | Plausible domain for development |
+| `FALLBACK_REDIRECT` | Where to redirect on 404 or error |
+
+## URL Format
+
+- Internal redirects: `pfr.fyi/{slug}`
+- External redirects: `pfr.fyi/e/{slug}`
+
+## API Endpoints
+
+The worker expects these API endpoints on your main site:
+
+- `/api/keiko/internal/{slug}` - For internal redirects
+- `/api/keiko/external/{slug}` - For external redirects
+
+Each endpoint should return a JSON response with either:
+```json
+{
+  "slug": "example",
+  "destination": "/path/to/destination"
+}
 ```
-npm install
-npm run dev
+
+Or for errors:
+```json
+{
+  "error": "Redirect not found",
+  "slug": "example"
+}
 ```
 
-deploy on Workers
-```
+## Deployment
+
+```bash
+# Deploy to production
 npm run deploy
+
+# Deploy to development
+npm run deploy:dev
+```
+
+## Local Development
+
+```bash
+npm run dev
 ```

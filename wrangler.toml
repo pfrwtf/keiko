@@ -1,12 +1,31 @@
 name = "keiko"
 main = "src/index.ts"
 compatibility_date = "2024-01-09"
-workers_dev = false
+send_metrics = false
 
-kv_namespaces = [
-  { binding = "KV", id = "2d002e23fe354fafb9ed74caa4561626" }
+[vars]
+# These will be overridden in the Cloudflare dashboard or with --env flags
+DOMAIN_PROD = "pfr.wtf"
+DOMAIN_DEV = "dev.pfr.wtf"
+PLAUSIBLE_DOMAIN_PROD = "pfr.fyi"
+PLAUSIBLE_DOMAIN_DEV = "dev.pfr.fyi"
+FALLBACK_REDIRECT = "https://pfr.wtf/"
+
+# Production environment
+[env.production]
+routes = [
+  { pattern = "pfr.fyi", custom_domain = true }
+]
+
+# Development environment
+[env.development]
+routes = [
+  { pattern = "dev.pfr.fyi", custom_domain = true }
 ]
 
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
+
+[limits]
+cpu_ms = 100

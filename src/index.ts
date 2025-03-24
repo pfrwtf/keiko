@@ -1,203 +1,194 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { bearerAuth } from 'hono/bearer-auth';
-import { Logger } from './utils/logger';
+import { Context, Hono } from "hono";
+import { cache } from "hono/cache";
+import { logger } from "hono/logger";
+import { sendAnalytics } from "./analytics";
 
 type Bindings = {
-  KV: KVNamespace;
-  TOKEN: string;
-  PLAUSIBLE_DOMAIN?: string;
-  LOGGING?: string;
+  DOMAIN_PROD: string;
+  DOMAIN_DEV: string;
+  PLAUSIBLE_DOMAIN_PROD: string;
+  PLAUSIBLE_DOMAIN_DEV: string;
+  FALLBACK_REDIRECT: string;
+};
+
+type RedirectResponse = {
+  slug: string;
+  destination: string;
+} | {
+  error: string;
+  slug?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Basic logging middleware
-app.use('*', async (c, next) => {
-  console.log('Request received:', c.req.method, c.req.url);
-  await next();
-});
+// Add logger middleware
+app.use("*", logger());
 
-// CORS for API endpoints
-app.use('/api/*', cors());
-
-// Auth middleware for API endpoints
-app.use('/api/*', async (c, next) => {
-  const auth = bearerAuth({ token: c.env.TOKEN });
-  return auth(c, next);
-});
-
-// Generate random key
-function generateKey(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
-    .map(n => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[n % 62])
-    .join('');
+// Helper function to determine if we're in dev or prod
+function isDev(c: Context): boolean {
+  return c.req.url.includes(c.env.DOMAIN_DEV);
 }
 
-// Ensure HTTPS
-function ensureHttps(url: string): string {
-  if (url.startsWith('http://')) {
-    return url.replace('http://', 'https://');
-  }
-  if (!url.startsWith('https://')) {
-    return `https://${url}`;
-  }
-  return url;
+// Helper function to get the appropriate API base
+function getApiBase(c: Context): string {
+  return isDev(c) ? `https://${c.env.DOMAIN_DEV}` : `https://${c.env.DOMAIN_PROD}`;
 }
 
-// PUBLIC ROUTES
+// Helper function to get the appropriate Plausible domain
+function getPlausibleDomain(c: Context): string {
+  return isDev(c) ? c.env.PLAUSIBLE_DOMAIN_DEV : c.env.PLAUSIBLE_DOMAIN_PROD;
+}
 
-// Root route - no key message
-app.get('/', (c) => {
-  return c.text('You gotta give me a short URL, holmes. -Keiko @ PFR');
+// Helper function to get appropriate TTL
+function getTTL(c: Context): number {
+  return isDev(c) 
+    ? 86400 // 1 day for dev
+    : 2592000; // 30 days for prod
+}
+
+// Handle root path
+app.get("/", async (c) => {
+  return c.redirect(c.env.FALLBACK_REDIRECT, 302);
 });
 
-// Redirect for valid key
-app.get('/:key', async (c) => {
-  const key = c.req.param('key');
-  const url = await c.env.KV.get(key);
+// Handle favicon.ico
+app.get("/favicon.ico", async (c) => {
+  return c.redirect(`${getApiBase(c)}/favicon.ico`, 302);
+});
+
+// Handle external redirects prefixed with "e/"
+app.get("/e/:slug", async (c) => {
+  const slug = c.req.param("slug");
   
-  if (!url) {
-    return c.text('Not a valid key', 404);
-  }
-
-  // Report to Plausible if configured
-  if (c.env.PLAUSIBLE_DOMAIN) {
-    c.executionCtx.waitUntil(
-      fetch(`https://${c.env.PLAUSIBLE_DOMAIN}/api/event`, {
-        method: 'POST',
-        headers: {
-          'User-Agent': c.req.header('user-agent') || '',
-          'X-Forwarded-For': c.req.header('x-real-ip') || '',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          domain: new URL(c.req.url).host,
-          name: 'pageview',
-          url: c.req.url,
-          referrer: c.req.header('referer') || 'none'
+  // Apply cache for performance
+  return cache({
+    cacheName: "keiko-external-cache",
+    cacheControl: `public, max-age=${getTTL(c)}`,
+  })(async (c) => {
+    try {
+      const apiUrl = `${getApiBase(c)}/api/keiko/external/${slug}`;
+      console.log(`Fetching from API: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        console.error(`API error: ${response.status} ${response.statusText}`);
+        // Send analytics for 404
+        if (response.status === 404) {
+          c.executionCtx.waitUntil(
+            sendAnalytics(c, {
+              name: "404",
+              props: { slug: `e/${slug}` }
+            })
+          );
+        }
+        return c.redirect(c.env.FALLBACK_REDIRECT, 302);
+      }
+      
+      const data = await response.json() as RedirectResponse;
+      
+      if ('error' in data) {
+        console.error(`Redirect error: ${data.error}`);
+        c.executionCtx.waitUntil(
+          sendAnalytics(c, {
+            name: "error",
+            props: { slug: `e/${slug}`, error: data.error }
+          })
+        );
+        return c.redirect(c.env.FALLBACK_REDIRECT, 302);
+      }
+      
+      // Send analytics
+      c.executionCtx.waitUntil(
+        sendAnalytics(c, {
+          name: "redirect",
+          props: { slug: `e/${slug}`, destination: data.destination }
         })
-      })
-    );
-  }
-
-  return c.redirect(url);
-});
-
-// PROTECTED API ROUTES
-
-// List all keys and URLs
-app.get('/api/all', async (c) => {
-  try {
-    const list = await c.env.KV.list();
-    const urls = await Promise.all(
-      list.keys.map(async (key) => ({
-        key: key.name,
-        url: await c.env.KV.get(key.name)
-      }))
-    );
-    return c.json(urls);
-  } catch (e) {
-    console.error('Error listing keys:', e);
-    return c.json({ error: 'Failed to list URLs' }, 500);
-  }
-});
-
-// Get specific key info
-app.get('/api/:key', async (c) => {
-  try {
-    const key = c.req.param('key');
-    const url = await c.env.KV.get(key);
-    
-    if (!url) {
-      return c.json({ error: 'Key not found' }, 404);
+      );
+      
+      // 302 redirect for external URLs
+      return c.redirect(data.destination, 302);
+    } catch (error) {
+      console.error(`Error handling external redirect for slug "${slug}":`, error);
+      c.executionCtx.waitUntil(
+        sendAnalytics(c, {
+          name: "error",
+          props: { slug: `e/${slug}`, error: error instanceof Error ? error.message : String(error) }
+        })
+      );
+      return c.redirect(c.env.FALLBACK_REDIRECT, 302);
     }
-
-    return c.json({ key, url });
-  } catch (e) {
-    console.error('Error getting key:', e);
-    return c.json({ error: 'Failed to get URL' }, 500);
-  }
+  }, c);
 });
 
-// Create new short URL
-app.put('/api/new', async (c) => {
-  try {
-    const body = await c.req.json();
-    
-    if (!body?.url) {
-      return c.json({ error: 'URL is required' }, 400);
-    }
-
-    let key = body.key;
-    
-    // Validate custom key if provided
-    if (key) {
-      if (key.length > 32) {
-        return c.json({ error: 'Key length must not exceed 32 characters' }, 400);
+// Handle internal redirects (no prefix)
+app.get("/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  
+  // Apply cache for performance
+  return cache({
+    cacheName: "keiko-internal-cache",
+    cacheControl: `public, max-age=${getTTL(c)}`,
+  })(async (c) => {
+    try {
+      const apiUrl = `${getApiBase(c)}/api/keiko/internal/${slug}`;
+      console.log(`Fetching from API: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        console.error(`API error: ${response.status} ${response.statusText}`);
+        // Send analytics for 404
+        if (response.status === 404) {
+          c.executionCtx.waitUntil(
+            sendAnalytics(c, {
+              name: "404",
+              props: { slug }
+            })
+          );
+        }
+        return c.redirect(c.env.FALLBACK_REDIRECT, 302);
       }
-      const existing = await c.env.KV.get(key);
-      if (existing) {
-        return c.json({ error: 'Key already exists' }, 409);
+      
+      const data = await response.json() as RedirectResponse;
+      
+      if ('error' in data) {
+        console.error(`Redirect error: ${data.error}`);
+        c.executionCtx.waitUntil(
+          sendAnalytics(c, {
+            name: "error",
+            props: { slug, error: data.error }
+          })
+        );
+        return c.redirect(c.env.FALLBACK_REDIRECT, 302);
       }
-    } else {
-      // Generate unique key
-      do {
-        key = generateKey();
-      } while (await c.env.KV.get(key));
+      
+      // Send analytics
+      c.executionCtx.waitUntil(
+        sendAnalytics(c, {
+          name: "redirect",
+          props: { slug, destination: data.destination }
+        })
+      );
+      
+      // Get the full URL for internal redirects
+      const destinationUrl = data.destination.startsWith('http') 
+        ? data.destination 
+        : `${getApiBase(c)}${data.destination.startsWith('/') ? '' : '/'}${data.destination}`;
+      
+      // 301 redirect for internal URLs
+      return c.redirect(destinationUrl, 301);
+    } catch (error) {
+      console.error(`Error handling internal redirect for slug "${slug}":`, error);
+      c.executionCtx.waitUntil(
+        sendAnalytics(c, {
+          name: "error",
+          props: { slug, error: error instanceof Error ? error.message : String(error) }
+        })
+      );
+      return c.redirect(c.env.FALLBACK_REDIRECT, 302);
     }
-
-    const url = ensureHttps(body.url);
-    await c.env.KV.put(key, url);
-    
-    return c.json({ key, url });
-  } catch (e) {
-    console.error('Error creating URL:', e);
-    return c.json({ error: 'Failed to create short URL' }, 500);
-  }
-});
-
-// Update existing URL
-app.patch('/api/:key', async (c) => {
-  try {
-    const key = c.req.param('key');
-    const body = await c.req.json();
-
-    if (!body?.url) {
-      return c.json({ error: 'URL is required' }, 400);
-    }
-
-    const existing = await c.env.KV.get(key);
-    if (!existing) {
-      return c.json({ error: 'Key not found' }, 404);
-    }
-
-    const url = ensureHttps(body.url);
-    await c.env.KV.put(key, url);
-    
-    return c.json({ key, url });
-  } catch (e) {
-    console.error('Error updating URL:', e);
-    return c.json({ error: 'Failed to update URL' }, 500);
-  }
-});
-
-// Delete URL
-app.delete('/api/:key', async (c) => {
-  try {
-    const key = c.req.param('key');
-    const existing = await c.env.KV.get(key);
-    
-    if (!existing) {
-      return c.json({ error: 'Key not found' }, 404);
-    }
-
-    await c.env.KV.delete(key);
-    return c.json({ message: 'Deleted' });
-  } catch (e) {
-    console.error('Error deleting URL:', e);
-    return c.json({ error: 'Failed to delete URL' }, 500);
-  }
+  }, c);
 });
 
 export default app;
